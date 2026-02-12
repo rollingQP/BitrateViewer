@@ -23,6 +23,108 @@ import ctypes
 import tempfile
 
 
+# ============ 多语言配置 ============
+
+LANGUAGES = {
+    "中文": {
+        "window_title": "视频比特率分析器",
+        "select_file": "📁 选择视频文件",
+        "no_file": "未选择文件",
+        "sample_window": "采样窗口:",
+        "second": "秒",
+        "bitrate_curve": " 比特率曲线 ",
+        "timeline_nav": " 时间轴导航 (拖动选择区域 / 滚轮缩放) ",
+        "reset_view": "🔍 重置视图",
+        "zoom_in": "➕ 放大",
+        "zoom_out": "➖ 缩小",
+        "hover_preview": "🖼 悬停显示截图",
+        "display": "显示:",
+        "ready": "就绪",
+        "e_core_mode": "最小化时使用 E 核 (省电模式)",
+        "bitrate": "比特率",
+        "time": "时间",
+        "average": "平均",
+        "max": "最大",
+        "min": "最小",
+        "codec": "编码",
+        "resolution": "分辨率",
+        "fps": "帧率",
+        "duration": "时长",
+        "size": "大小",
+        "select_video_hint": "请选择视频文件进行分析",
+        "bitrate_analysis": "视频比特率分析",
+        "getting_info": "正在获取视频信息...",
+        "video_duration": "视频时长",
+        "reading_frames": "正在读取帧数据...",
+        "read_frames": "读取帧数据...",
+        "packets_read": "读取到 {count} 个数据包，正在计算...",
+        "done": "✓ 完成 - {count} 个采样点",
+        "error": "错误",
+        "error_duration": "错误: 无法获取视频时长",
+        "error_frames": "错误: 无法获取帧数据",
+        "ffmpeg_not_found": "FFmpeg 未找到",
+        "analyzing": "正在分析中",
+        "ffmpeg_found": "✓ FFmpeg: {path}",
+        "ffmpeg_missing": "✗ 未找到 FFmpeg - 请将 ffmpeg 放入 lib 文件夹或添加到系统 PATH",
+        "using_processes": "使用 {count} 进程计算...",
+        "calculating": "计算中... {current}/{total}",
+        "calc_bitrate": "计算比特率... {current}/{total}",
+        "cpu_cores": "CPU: {count} 核心",
+        "cpu_hybrid": "CPU: {p}P + {e}E 核心 (混合架构)",
+        "e_core_status": "⚡ E核模式 ({count}核)",
+        "all_core_status": "🚀 全核模式 ({count}核)",
+    },
+    "English": {
+        "window_title": "Video Bitrate Analyzer",
+        "select_file": "📁 Select Video",
+        "no_file": "No file selected",
+        "sample_window": "Window:",
+        "second": "sec",
+        "bitrate_curve": " Bitrate Curve ",
+        "timeline_nav": " Timeline Navigation (Drag to select / Scroll to zoom) ",
+        "reset_view": "🔍 Reset",
+        "zoom_in": "➕ Zoom In",
+        "zoom_out": "➖ Zoom Out",
+        "hover_preview": "🖼 Hover Preview",
+        "display": "View:",
+        "ready": "Ready",
+        "e_core_mode": "Use E-cores when minimized (Power saving)",
+        "bitrate": "Bitrate",
+        "time": "Time",
+        "average": "Avg",
+        "max": "Max",
+        "min": "Min",
+        "codec": "Codec",
+        "resolution": "Resolution",
+        "fps": "FPS",
+        "duration": "Duration",
+        "size": "Size",
+        "select_video_hint": "Please select a video file to analyze",
+        "bitrate_analysis": "Video Bitrate Analysis",
+        "getting_info": "Getting video info...",
+        "video_duration": "Duration",
+        "reading_frames": "Reading frame data...",
+        "read_frames": "Reading frames...",
+        "packets_read": "Read {count} packets, calculating...",
+        "done": "✓ Done - {count} sample points",
+        "error": "Error",
+        "error_duration": "Error: Cannot get video duration",
+        "error_frames": "Error: Cannot get frame data",
+        "ffmpeg_not_found": "FFmpeg not found",
+        "analyzing": "Analysis in progress",
+        "ffmpeg_found": "✓ FFmpeg: {path}",
+        "ffmpeg_missing": "✗ FFmpeg not found - Please put ffmpeg in lib folder or add to PATH",
+        "using_processes": "Using {count} processes...",
+        "calculating": "Calculating... {current}/{total}",
+        "calc_bitrate": "Calculating bitrate... {current}/{total}",
+        "cpu_cores": "CPU: {count} cores",
+        "cpu_hybrid": "CPU: {p}P + {e}E cores (Hybrid)",
+        "e_core_status": "⚡ E-core ({count})",
+        "all_core_status": "🚀 All cores ({count})",
+    }
+}
+
+
 # ============ 全局变量（用于多进程） ============
 
 _shared_affinity_mask = None
@@ -69,10 +171,10 @@ def _apply_current_affinity(force=False):
                 old_mask = _last_applied_mask
                 _last_applied_mask = mask
                 if old_mask != mask:
-                    print(f"[Worker PID {os.getpid()}] 亲和性切换: {hex(old_mask)} -> {hex(mask)}")
+                    print(f"[Worker PID {os.getpid()}] Affinity: {hex(old_mask)} -> {hex(mask)}")
                 return True
         except Exception as e:
-            print(f"[Worker PID {os.getpid()}] 亲和性设置失败: {e}")
+            print(f"[Worker PID {os.getpid()}] Affinity error: {e}")
             return False
     return False
 
@@ -131,7 +233,7 @@ class CPUAffinityManager:
         try:
             self.shared_mask = multiprocessing.Value('Q', 0, lock=True)
         except Exception as e:
-            print(f"[CPU] 共享变量创建失败: {e}")
+            print(f"[CPU] Shared mask error: {e}")
             self.shared_mask = None
     
     def _setup_windows_types(self):
@@ -175,7 +277,6 @@ class CPUAffinityManager:
                 mask_cores = bin(self.all_cores_mask).count('1')
                 if mask_cores > 0:
                     self.total_cores = mask_cores
-                print(f"[CPU] 系统掩码: {hex(self.all_cores_mask)}, 核心数: {self.total_cores}")
             else:
                 self.all_cores_mask = (1 << self.total_cores) - 1
             
@@ -189,14 +290,8 @@ class CPUAffinityManager:
             
             self.supported = self.has_hybrid_arch and self.e_core_count > 0 and self.p_core_count > 0
             
-            if self.supported:
-                print(f"[CPU] 检测到混合架构: {self.p_core_count}P + {self.e_core_count}E")
-                print(f"[CPU] P核掩码: {hex(self.p_cores_mask)}, E核掩码: {hex(self.e_cores_mask)}")
-            else:
-                print(f"[CPU] 标准架构: {self.total_cores} 核心")
-            
         except Exception as e:
-            print(f"[CPU] 检测错误: {e}")
+            print(f"[CPU] Detection error: {e}")
             self.supported = False
             if self.all_cores_mask == 0:
                 self.all_cores_mask = (1 << self.total_cores) - 1
@@ -271,7 +366,7 @@ class CPUAffinityManager:
             
             return False
         except Exception as e:
-            print(f"[CPU] CpuSet 检测错误: {e}")
+            print(f"[CPU] CpuSet error: {e}")
             return False
     
     def _detect_via_power_info(self):
@@ -322,7 +417,7 @@ class CPUAffinityManager:
                     return True
             return False
         except Exception as e:
-            print(f"[CPU] PowerInfo 检测错误: {e}")
+            print(f"[CPU] PowerInfo error: {e}")
             return False
     
     def _update_shared_mask(self, mask):
@@ -330,7 +425,7 @@ class CPUAffinityManager:
             try:
                 self.shared_mask.value = mask
             except Exception as e:
-                print(f"[CPU] 更新共享变量失败: {e}")
+                print(f"[CPU] Update shared mask error: {e}")
     
     def set_e_cores_only(self):
         if not self.supported or self.e_cores_mask == 0:
@@ -338,7 +433,7 @@ class CPUAffinityManager:
         self.current_target_mask = self.e_cores_mask
         self.current_target_type = "e_cores"
         self._update_shared_mask(self.e_cores_mask)
-        return self._set_affinity_mask(self.e_cores_mask, "E核")
+        return self._set_affinity_mask(self.e_cores_mask, "E-core")
     
     def set_all_cores(self):
         if self.all_cores_mask == 0:
@@ -346,7 +441,7 @@ class CPUAffinityManager:
         self.current_target_mask = self.all_cores_mask
         self.current_target_type = "all"
         self._update_shared_mask(self.all_cores_mask)
-        return self._set_affinity_mask(self.all_cores_mask, "全核")
+        return self._set_affinity_mask(self.all_cores_mask, "All")
     
     def _set_affinity_mask(self, mask, name):
         try:
@@ -360,14 +455,10 @@ class CPUAffinityManager:
             result = kernel32.SetProcessAffinityMask(process, self.DWORD_PTR(mask))
             
             if result == 0:
-                error = ctypes.get_last_error()
-                print(f"[CPU] SetProcessAffinityMask({name} {hex(mask)}) 失败，错误码: {error}")
                 return False
-            
-            print(f"[CPU] 主进程亲和性设置: {name} {hex(mask)}")
             return True
         except Exception as e:
-            print(f"[CPU] 设置亲和性错误: {e}")
+            print(f"[CPU] Set affinity error: {e}")
             return False
     
     def set_subprocess_affinity(self, process):
@@ -380,22 +471,18 @@ class CPUAffinityManager:
             
             handle = ctypes.c_void_p(int(process._handle))
             result = kernel32.SetProcessAffinityMask(handle, self.DWORD_PTR(self.current_target_mask))
-            
-            if result:
-                print(f"[CPU] 子进程 PID {process.pid} 亲和性设置: {self.current_target_type} {hex(self.current_target_mask)}")
-                return True
-            return False
+            return result != 0
         except Exception as e:
-            print(f"[CPU] 设置子进程亲和性错误: {e}")
+            print(f"[CPU] Subprocess affinity error: {e}")
             return False
     
     def get_shared_mask(self):
         return self.shared_mask
     
-    def get_info_string(self):
+    def get_info_string(self, lang_dict):
         if self.supported:
-            return f"CPU: {self.p_core_count}P + {self.e_core_count}E 核心 (混合架构)"
-        return f"CPU: {self.total_cores} 核心"
+            return lang_dict["cpu_hybrid"].format(p=self.p_core_count, e=self.e_core_count)
+        return lang_dict["cpu_cores"].format(count=self.total_cores)
 
 
 # ============ 主应用程序 ============
@@ -403,7 +490,12 @@ class CPUAffinityManager:
 class BitrateAnalyzer:
     def __init__(self, root):
         self.root = root
-        self.root.title("视频比特率分析器")
+        
+        # 语言设置
+        self.current_lang = "中文"
+        self.lang = LANGUAGES[self.current_lang]
+        
+        self.root.title(self.lang["window_title"])
         
         self.dpi_scale = self.get_dpi_scale()
         
@@ -433,7 +525,6 @@ class BitrateAnalyzer:
         self.view_end = 1.0
         self.min_view_range = 0.005
         
-        # 缩略图拖动相关
         self.thumbnail_dragging = False
         self.thumbnail_drag_mode = None
         self.thumbnail_drag_start_x = 0
@@ -449,7 +540,6 @@ class BitrateAnalyzer:
         self.pending_chart_draw = None
         self.pending_thumbnail_draw = None
         
-        # 视频预览相关
         self.show_preview = False
         self.preview_window = None
         self.preview_label = None
@@ -457,13 +547,20 @@ class BitrateAnalyzer:
         self.preview_time_label = None
         self.last_preview_time = -999
         self.preview_cache = {}
-        self.preview_size = (320, 180)  # 16:9 预览大小
+        self.preview_size = (320, 180)
         self.preview_pending = None
         
         self.setup_fonts()
         self.setup_ui()
         self.find_ffmpeg()
         self.setup_window_state_handler()
+    
+    def get_text(self, key, **kwargs):
+        """获取当前语言的文本"""
+        text = self.lang.get(key, key)
+        if kwargs:
+            text = text.format(**kwargs)
+        return text
     
     def get_dpi_scale(self):
         try:
@@ -492,9 +589,8 @@ class BitrateAnalyzer:
         self.fonts = {
             "normal": ("Microsoft YaHei UI", scaled_size),
             "bold": ("Microsoft YaHei UI", scaled_size, "bold"),
-            "small": ("Microsoft YaHei UI", int(scaled_size * 0.9)),
-            "title": ("Microsoft YaHei UI", int(scaled_size * 1.2), "bold"),
-            "chart": ("Arial", int(scaled_size * 0.9)),
+            "title": ("Microsoft YaHei UI", int(scaled_size * 1.1), "bold"),
+            "chart": ("Microsoft YaHei UI", scaled_size),
             "chart_title": ("Microsoft YaHei UI", int(scaled_size * 1.1), "bold"),
         }
     
@@ -503,6 +599,7 @@ class BitrateAnalyzer:
         style.configure("TLabel", font=self.fonts["normal"])
         style.configure("TButton", font=self.fonts["normal"])
         style.configure("TCombobox", font=self.fonts["normal"])
+        style.configure("TCheckbutton", font=self.fonts["normal"])
         
         pad = int(10 * self.dpi_scale)
         
@@ -514,13 +611,13 @@ class BitrateAnalyzer:
         control_frame.pack(fill=tk.X, pady=(0, pad))
         
         self.select_btn = ttk.Button(
-            control_frame, text="📁 选择视频文件", 
+            control_frame, text=self.get_text("select_file"), 
             command=self.select_video, width=18
         )
         self.select_btn.pack(side=tk.LEFT, padx=(0, pad))
         
         self.file_label = ttk.Label(
-            control_frame, text="未选择文件", 
+            control_frame, text=self.get_text("no_file"), 
             font=self.fonts["normal"], foreground="#666"
         )
         self.file_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -528,7 +625,20 @@ class BitrateAnalyzer:
         param_frame = ttk.Frame(control_frame)
         param_frame.pack(side=tk.RIGHT)
         
-        ttk.Label(param_frame, text="采样窗口:").pack(side=tk.LEFT, padx=(pad, 5))
+        # 语言切换 - 使用地球图标，无需文字标签
+        ttk.Label(param_frame, text="🌐", font=self.fonts["normal"]).pack(side=tk.LEFT, padx=(0, 2))
+        
+        self.lang_var = tk.StringVar(value=self.current_lang)
+        self.lang_combo = ttk.Combobox(
+            param_frame, textvariable=self.lang_var,
+            values=list(LANGUAGES.keys()), width=8, state="readonly", font=self.fonts["normal"]
+        )
+        self.lang_combo.pack(side=tk.LEFT, padx=(0, pad))
+        self.lang_combo.bind("<<ComboboxSelected>>", self.on_language_change)
+        
+        self.window_label = ttk.Label(param_frame, text=self.get_text("sample_window"), font=self.fonts["normal"])
+        self.window_label.pack(side=tk.LEFT, padx=(pad, 5))
+        
         self.window_var = tk.StringVar(value="0.1")
         self.window_combo = ttk.Combobox(
             param_frame, textvariable=self.window_var,
@@ -537,13 +647,15 @@ class BitrateAnalyzer:
         )
         self.window_combo.pack(side=tk.LEFT)
         self.window_combo.bind("<<ComboboxSelected>>", self.on_window_changed)
-        ttk.Label(param_frame, text="秒").pack(side=tk.LEFT, padx=(2, 0))
+        
+        self.second_label = ttk.Label(param_frame, text=self.get_text("second"), font=self.fonts["normal"])
+        self.second_label.pack(side=tk.LEFT, padx=(2, 0))
         
         # FFmpeg 信息
         info_row = ttk.Frame(main_frame)
         info_row.pack(fill=tk.X, anchor=tk.W)
         
-        self.ffmpeg_label = ttk.Label(info_row, text="", foreground="gray", font=self.fonts["small"])
+        self.ffmpeg_label = ttk.Label(info_row, text="", foreground="gray", font=self.fonts["normal"])
         self.ffmpeg_label.pack(side=tk.LEFT)
         
         # CPU 调度控制
@@ -551,25 +663,26 @@ class BitrateAnalyzer:
         cpu_frame.pack(fill=tk.X, pady=(5, 0))
         
         self.cpu_info_label = ttk.Label(
-            cpu_frame, text=self.cpu_manager.get_info_string(),
-            font=self.fonts["small"], foreground="#666"
+            cpu_frame, text=self.cpu_manager.get_info_string(self.lang),
+            font=self.fonts["normal"], foreground="#666"
         )
         self.cpu_info_label.pack(side=tk.LEFT)
         
         if self.cpu_manager.supported:
             self.e_core_var = tk.BooleanVar(value=True)
             self.e_core_check = ttk.Checkbutton(
-                cpu_frame, text="最小化时使用 E 核 (省电模式)",
+                cpu_frame, text=self.get_text("e_core_mode"),
                 variable=self.e_core_var, command=self.on_e_core_toggle
             )
             self.e_core_check.pack(side=tk.RIGHT)
             
             self.cpu_status_label = ttk.Label(
-                cpu_frame, text="", font=self.fonts["small"], foreground="#2e7d32"
+                cpu_frame, text="", font=self.fonts["normal"], foreground="#2e7d32"
             )
             self.cpu_status_label.pack(side=tk.RIGHT, padx=(0, 10))
         else:
             self.cpu_status_label = None
+            self.e_core_check = None
         
         # 进度区
         progress_frame = ttk.Frame(main_frame)
@@ -583,44 +696,48 @@ class BitrateAnalyzer:
         self.progress_bar.pack(fill=tk.X, side=tk.LEFT, expand=True, padx=(0, pad))
         
         self.status_label = ttk.Label(
-            progress_frame, text="就绪", width=45, anchor=tk.W, font=self.fonts["small"]
+            progress_frame, text=self.get_text("ready"), width=45, anchor=tk.W, font=self.fonts["normal"]
         )
         self.status_label.pack(side=tk.LEFT)
         
         # 主图表区
-        chart_frame = ttk.LabelFrame(main_frame, text=" 比特率曲线 ", padding=5)
-        chart_frame.pack(fill=tk.BOTH, expand=True, pady=(5, pad))
+        self.chart_frame = ttk.LabelFrame(main_frame, text=self.get_text("bitrate_curve"), padding=5)
+        self.chart_frame.pack(fill=tk.BOTH, expand=True, pady=(5, pad))
         
-        self.canvas = tk.Canvas(chart_frame, bg="white", highlightthickness=1, highlightbackground="#ddd")
+        self.canvas = tk.Canvas(self.chart_frame, bg="white", highlightthickness=1, highlightbackground="#ddd")
         self.canvas.pack(fill=tk.BOTH, expand=True)
         
         # 缩略图区域
-        thumbnail_frame = ttk.LabelFrame(main_frame, text=" 时间轴导航 (拖动选择区域 / 滚轮缩放) ", padding=5)
-        thumbnail_frame.pack(fill=tk.X, pady=(0, pad))
+        self.thumbnail_frame = ttk.LabelFrame(main_frame, text=self.get_text("timeline_nav"), padding=5)
+        self.thumbnail_frame.pack(fill=tk.X, pady=(0, pad))
         
         thumb_height = int(80 * self.dpi_scale)
         self.thumbnail_canvas = tk.Canvas(
-            thumbnail_frame, bg="white", height=thumb_height,
+            self.thumbnail_frame, bg="white", height=thumb_height,
             highlightthickness=1, highlightbackground="#ddd"
         )
         self.thumbnail_canvas.pack(fill=tk.X, expand=True)
         
-        zoom_frame = ttk.Frame(thumbnail_frame)
+        zoom_frame = ttk.Frame(self.thumbnail_frame)
         zoom_frame.pack(fill=tk.X, pady=(5, 0))
         
-        ttk.Button(zoom_frame, text="🔍 重置视图", command=self.reset_view, width=12).pack(side=tk.LEFT)
-        ttk.Button(zoom_frame, text="➕ 放大", command=lambda: self.zoom(1.5), width=8).pack(side=tk.LEFT, padx=(10, 0))
-        ttk.Button(zoom_frame, text="➖ 缩小", command=lambda: self.zoom(0.67), width=8).pack(side=tk.LEFT, padx=(5, 0))
+        self.reset_btn = ttk.Button(zoom_frame, text=self.get_text("reset_view"), command=self.reset_view, width=12)
+        self.reset_btn.pack(side=tk.LEFT)
         
-        # 视频预览开关
+        self.zoom_in_btn = ttk.Button(zoom_frame, text=self.get_text("zoom_in"), command=lambda: self.zoom(1.5), width=8)
+        self.zoom_in_btn.pack(side=tk.LEFT, padx=(10, 0))
+        
+        self.zoom_out_btn = ttk.Button(zoom_frame, text=self.get_text("zoom_out"), command=lambda: self.zoom(0.67), width=8)
+        self.zoom_out_btn.pack(side=tk.LEFT, padx=(5, 0))
+        
         self.preview_var = tk.BooleanVar(value=False)
         self.preview_check = ttk.Checkbutton(
-            zoom_frame, text="🖼 悬停显示截图",
+            zoom_frame, text=self.get_text("hover_preview"),
             variable=self.preview_var, command=self.on_preview_toggle
         )
         self.preview_check.pack(side=tk.LEFT, padx=(20, 0))
         
-        self.zoom_label = ttk.Label(zoom_frame, text="显示: 100.0%", font=self.fonts["small"])
+        self.zoom_label = ttk.Label(zoom_frame, text=f"{self.get_text('display')} 100.0%", font=self.fonts["normal"])
         self.zoom_label.pack(side=tk.RIGHT)
         
         # 视频信息区
@@ -628,7 +745,7 @@ class BitrateAnalyzer:
         bottom_info_frame.pack(fill=tk.X)
         
         self.video_info_label = ttk.Label(
-            bottom_info_frame, text="", font=self.fonts["small"], foreground="#555"
+            bottom_info_frame, text="", font=self.fonts["normal"], foreground="#555"
         )
         self.video_info_label.pack(side=tk.LEFT)
         
@@ -651,6 +768,62 @@ class BitrateAnalyzer:
         self.thumbnail_canvas.bind("<ButtonRelease-1>", self.on_thumbnail_release)
         self.thumbnail_canvas.bind("<MouseWheel>", self.on_mouse_wheel)
         self.thumbnail_canvas.bind("<Double-Button-1>", self.on_thumbnail_double_click)
+    
+    def on_language_change(self, event=None):
+        """切换语言"""
+        new_lang = self.lang_var.get()
+        if new_lang != self.current_lang:
+            self.current_lang = new_lang
+            self.lang = LANGUAGES[new_lang]
+            self.update_ui_language()
+    
+    def update_ui_language(self):
+        """更新所有 UI 文本"""
+        self.root.title(self.get_text("window_title"))
+        
+        self.select_btn.config(text=self.get_text("select_file"))
+        
+        if not self.video_path:
+            self.file_label.config(text=self.get_text("no_file"))
+        
+        self.window_label.config(text=self.get_text("sample_window"))
+        self.second_label.config(text=self.get_text("second"))
+        
+        self.cpu_info_label.config(text=self.cpu_manager.get_info_string(self.lang))
+        
+        if self.e_core_check:
+            self.e_core_check.config(text=self.get_text("e_core_mode"))
+        
+        if not self.analyzing:
+            self.status_label.config(text=self.get_text("ready"))
+        
+        self.chart_frame.config(text=self.get_text("bitrate_curve"))
+        self.thumbnail_frame.config(text=self.get_text("timeline_nav"))
+        
+        self.reset_btn.config(text=self.get_text("reset_view"))
+        self.zoom_in_btn.config(text=self.get_text("zoom_in"))
+        self.zoom_out_btn.config(text=self.get_text("zoom_out"))
+        self.preview_check.config(text=self.get_text("hover_preview"))
+        
+        self.update_zoom_label()
+        
+        # 重绘图表以更新标签
+        if self.bitrate_data:
+            self.draw_chart()
+        else:
+            self.canvas.delete("all")
+            width = self.canvas.winfo_width()
+            height = self.canvas.winfo_height()
+            if width > 100 and height > 100:
+                self.canvas.create_text(
+                    width / 2, height / 2,
+                    text=self.get_text("select_video_hint"),
+                    font=self.fonts["title"], fill="#999"
+                )
+        
+        # 更新视频信息
+        if hasattr(self, 'video_duration') and hasattr(self, 'last_video_info'):
+            self.update_video_info(self.video_duration, self.last_video_info)
     
     def setup_window_state_handler(self):
         if platform.system() == "Windows":
@@ -692,11 +865,10 @@ class BitrateAnalyzer:
                     pass
             
             if is_minimized != self.is_minimized:
-                print(f"[窗口状态] {'最小化' if is_minimized else '恢复'}")
                 self.is_minimized = is_minimized
                 self._handle_window_state_change()
         except Exception as e:
-            print(f"[DEBUG] 窗口状态检测错误: {e}")
+            pass
     
     def _get_window_handle(self):
         try:
@@ -722,18 +894,17 @@ class BitrateAnalyzer:
             if self.analyzing:
                 success = self.cpu_manager.set_e_cores_only()
                 if success:
-                    self.update_cpu_status(f"⚡ E核模式 ({self.cpu_manager.e_core_count}核)")
+                    self.update_cpu_status(self.get_text("e_core_status", count=self.cpu_manager.e_core_count))
         else:
             success = self.cpu_manager.set_all_cores()
             if success:
                 if self.analyzing:
-                    self.update_cpu_status(f"🚀 全核模式 ({self.cpu_manager.total_cores}核)")
+                    self.update_cpu_status(self.get_text("all_core_status", count=self.cpu_manager.total_cores))
                 else:
                     self.update_cpu_status("")
     
     def on_e_core_toggle(self):
         self.use_e_cores_when_minimized = self.e_core_var.get()
-        print(f"[CPU] E核省电模式: {'启用' if self.use_e_cores_when_minimized else '禁用'}")
         
         if not self.use_e_cores_when_minimized:
             self.cpu_manager.set_all_cores()
@@ -748,21 +919,18 @@ class BitrateAnalyzer:
     # ============ 视频预览相关方法 ============
     
     def on_preview_toggle(self):
-        """切换视频预览功能"""
         self.show_preview = self.preview_var.get()
         if not self.show_preview:
             self.hide_preview()
     
     def create_preview_window(self):
-        """创建预览窗口"""
         if self.preview_window is None:
             self.preview_window = tk.Toplevel(self.root)
             self.preview_window.title("")
-            self.preview_window.overrideredirect(True)  # 无边框
+            self.preview_window.overrideredirect(True)
             self.preview_window.attributes('-topmost', True)
             self.preview_window.withdraw()
             
-            # 添加边框效果
             outer_frame = tk.Frame(self.preview_window, bg="#1976D2", padx=2, pady=2)
             outer_frame.pack(fill=tk.BOTH, expand=True)
             
@@ -773,7 +941,7 @@ class BitrateAnalyzer:
             self.preview_label.pack(padx=2, pady=(2, 0))
             
             self.preview_time_label = tk.Label(
-                inner_frame, text="", font=self.fonts["small"],
+                inner_frame, text="", font=self.fonts["normal"],
                 bg="#f5f5f5", fg="#333"
             )
             self.preview_time_label.pack(pady=(2, 4))
@@ -781,7 +949,6 @@ class BitrateAnalyzer:
         return self.preview_window
     
     def hide_preview(self):
-        """隐藏预览窗口"""
         if self.preview_window:
             self.preview_window.withdraw()
         if self.preview_pending:
@@ -789,38 +956,30 @@ class BitrateAnalyzer:
             self.preview_pending = None
     
     def request_preview(self, time_sec, mouse_x, mouse_y):
-        """请求显示预览截图"""
         if not self.show_preview or not self.video_path or not self.ffmpeg_path:
             return
         
-        # 四舍五入到 0.5 秒精度，减少请求
         rounded_time = round(time_sec * 2) / 2
         
-        # 如果时间点没变化，只更新位置
         if abs(rounded_time - self.last_preview_time) < 0.3:
             self._update_preview_position(mouse_x, mouse_y)
             return
         
         self.last_preview_time = rounded_time
         
-        # 取消之前的请求
         if self.preview_pending:
             self.root.after_cancel(self.preview_pending)
         
-        # 延迟执行，避免快速移动时频繁请求
         self.preview_pending = self.root.after(
             100,
             lambda: self._fetch_preview_async(rounded_time, mouse_x, mouse_y)
         )
     
     def _fetch_preview_async(self, time_sec, mouse_x, mouse_y):
-        """异步获取预览截图"""
-        # 检查缓存
         if time_sec in self.preview_cache:
             self._show_preview(self.preview_cache[time_sec], time_sec, mouse_x, mouse_y)
             return
         
-        # 异步获取
         thread = threading.Thread(
             target=self._fetch_preview_thread,
             args=(time_sec, mouse_x, mouse_y),
@@ -829,14 +988,11 @@ class BitrateAnalyzer:
         thread.start()
     
     def _fetch_preview_thread(self, time_sec, mouse_x, mouse_y):
-        """在后台线程中获取预览截图"""
         tmp_path = None
         try:
-            # 创建临时文件
             with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
                 tmp_path = tmp.name
             
-            # 使用 ffmpeg 截取帧
             cmd = [
                 self.ffmpeg_path,
                 '-ss', str(time_sec),
@@ -854,10 +1010,8 @@ class BitrateAnalyzer:
             result = subprocess.run(cmd, **kwargs, timeout=5)
             
             if result.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
-                # 在主线程中加载图像
                 self.root.after(0, lambda: self._load_and_show_preview(tmp_path, time_sec, mouse_x, mouse_y))
             else:
-                # 清理临时文件
                 if tmp_path and os.path.exists(tmp_path):
                     try:
                         os.unlink(tmp_path)
@@ -865,7 +1019,6 @@ class BitrateAnalyzer:
                         pass
                     
         except Exception as e:
-            print(f"[预览] 截图错误: {e}")
             if tmp_path and os.path.exists(tmp_path):
                 try:
                     os.unlink(tmp_path)
@@ -873,13 +1026,12 @@ class BitrateAnalyzer:
                     pass
     
     def _load_and_show_preview(self, tmp_path, time_sec, mouse_x, mouse_y):
-        """加载并显示预览图"""
         try:
             image = tk.PhotoImage(file=tmp_path)
             self.preview_cache[time_sec] = image
             self._show_preview(image, time_sec, mouse_x, mouse_y)
         except Exception as e:
-            print(f"[预览] 加载图片错误: {e}")
+            pass
         finally:
             try:
                 if os.path.exists(tmp_path):
@@ -888,12 +1040,11 @@ class BitrateAnalyzer:
                 pass
     
     def _show_preview(self, image, time_sec, mouse_x, mouse_y):
-        """显示预览窗口"""
         if not self.show_preview:
             return
         
         self.create_preview_window()
-        self.preview_image = image  # 保持引用防止垃圾回收
+        self.preview_image = image
         self.preview_label.config(image=image)
         self.preview_time_label.config(text=self.format_time_with_frames(time_sec))
         
@@ -901,45 +1052,36 @@ class BitrateAnalyzer:
         self.preview_window.deiconify()
     
     def _update_preview_position(self, mouse_x, mouse_y):
-        """更新预览窗口位置"""
         if not self.preview_window or not self.preview_window.winfo_viewable():
             if self.preview_window and self.preview_image:
                 self.preview_window.deiconify()
             else:
                 return
         
-        # 获取画布的屏幕坐标
         canvas_x = self.canvas.winfo_rootx()
         canvas_y = self.canvas.winfo_rooty()
         
-        # 预览窗口大小（加上边框和标签）
         preview_w = self.preview_size[0] + 10
         preview_h = self.preview_size[1] + 35
         
-        # 默认显示在鼠标右上方
         x = canvas_x + mouse_x + 20
         y = canvas_y + mouse_y - preview_h - 10
         
-        # 获取屏幕尺寸
         screen_w = self.root.winfo_screenwidth()
         screen_h = self.root.winfo_screenheight()
         
-        # 确保不超出屏幕右边界
         if x + preview_w > screen_w:
             x = canvas_x + mouse_x - preview_w - 20
         
-        # 确保不超出屏幕上边界
         if y < 0:
             y = canvas_y + mouse_y + 20
         
-        # 确保不超出屏幕下边界
         if y + preview_h > screen_h:
             y = screen_h - preview_h - 10
         
         self.preview_window.geometry(f"+{x}+{y}")
     
     def clear_preview_cache(self):
-        """清除预览缓存"""
         self.preview_cache = {}
         self.last_preview_time = -999
     
@@ -962,7 +1104,7 @@ class BitrateAnalyzer:
         if os.path.isfile(lib_ffmpeg) and os.path.isfile(lib_ffprobe):
             self.ffmpeg_path = lib_ffmpeg
             self.ffprobe_path = lib_ffprobe
-            self.ffmpeg_label.config(text=f"✓ FFmpeg: {lib_ffprobe}", foreground="#2e7d32")
+            self.ffmpeg_label.config(text=self.get_text("ffmpeg_found", path=lib_ffprobe), foreground="#2e7d32")
             return True
         
         try:
@@ -977,15 +1119,12 @@ class BitrateAnalyzer:
                 if test_result.returncode == 0:
                     self.ffmpeg_path = ffmpeg_name
                     self.ffprobe_path = ffprobe_name
-                    self.ffmpeg_label.config(text=f"✓ FFmpeg: {full_path}", foreground="#1565c0")
+                    self.ffmpeg_label.config(text=self.get_text("ffmpeg_found", path=full_path), foreground="#1565c0")
                     return True
         except:
             pass
         
-        self.ffmpeg_label.config(
-            text="✗ 未找到 FFmpeg - 请将 ffmpeg 放入 lib 文件夹或添加到系统 PATH",
-            foreground="#c62828"
-        )
+        self.ffmpeg_label.config(text=self.get_text("ffmpeg_missing"), foreground="#c62828")
         return False
     
     def get_subprocess_kwargs(self):
@@ -1031,17 +1170,17 @@ class BitrateAnalyzer:
     
     def select_video(self):
         if not self.ffprobe_path:
-            messagebox.showerror("错误", "FFmpeg 未找到")
+            messagebox.showerror(self.get_text("error"), self.get_text("ffmpeg_not_found"))
             return
         if self.analyzing:
-            messagebox.showwarning("提示", "正在分析中")
+            messagebox.showwarning(self.get_text("error"), self.get_text("analyzing"))
             return
         
         filetypes = [
-            ("视频文件", "*.mp4 *.mkv *.avi *.mov *.wmv *.flv *.webm *.m4v *.ts *.mts *.m2ts *.mpg *.mpeg *.vob *.3gp"),
-            ("所有文件", "*.*")
+            ("Video Files", "*.mp4 *.mkv *.avi *.mov *.wmv *.flv *.webm *.m4v *.ts *.mts *.m2ts *.mpg *.mpeg *.vob *.3gp"),
+            ("All Files", "*.*")
         ]
-        filepath = filedialog.askopenfilename(title="选择视频文件", filetypes=filetypes)
+        filepath = filedialog.askopenfilename(title=self.get_text("select_file"), filetypes=filetypes)
         
         if filepath:
             self.video_path = filepath
@@ -1070,31 +1209,31 @@ class BitrateAnalyzer:
         self.cursor_info_label.config(text="")
         self.update_zoom_label()
         
-        # 清除预览缓存
         self.clear_preview_cache()
         self.hide_preview()
         
         if self.cpu_manager.supported and self.use_e_cores_when_minimized:
             if self.is_minimized:
                 self.cpu_manager.set_e_cores_only()
-                self.update_cpu_status(f"⚡ E核模式 ({self.cpu_manager.e_core_count}核)")
+                self.update_cpu_status(self.get_text("e_core_status", count=self.cpu_manager.e_core_count))
             else:
                 self.cpu_manager.set_all_cores()
-                self.update_cpu_status(f"🚀 全核模式 ({self.cpu_manager.total_cores}核)")
+                self.update_cpu_status(self.get_text("all_core_status", count=self.cpu_manager.total_cores))
         
         thread = threading.Thread(target=self._analyze_thread, daemon=True)
         thread.start()
     
     def _analyze_thread(self):
         try:
-            self.update_progress(0, "正在获取视频信息...")
+            self.update_progress(0, self.get_text("getting_info"))
             duration, video_info = self.get_video_info()
             
             if duration is None or duration <= 0:
-                self.update_progress(0, "错误: 无法获取视频时长")
+                self.update_progress(0, self.get_text("error_duration"))
                 return
             
             self.video_duration = duration
+            self.last_video_info = video_info
             
             try:
                 fps_str = video_info.get("fps", "25")
@@ -1104,15 +1243,15 @@ class BitrateAnalyzer:
             except:
                 self.video_fps = 25.0
             
-            self.update_progress(5, f"视频时长: {self.format_time_short(duration)}, 帧率: {self.video_fps:.2f} fps")
-            self.update_progress(8, "正在读取帧数据...")
+            self.update_progress(5, f"{self.get_text('video_duration')}: {self.format_time_short(duration)}, FPS: {self.video_fps:.2f}")
+            self.update_progress(8, self.get_text("reading_frames"))
             
             packets = self.get_packets_data(duration)
             if not packets:
-                self.update_progress(0, "错误: 无法获取帧数据")
+                self.update_progress(0, self.get_text("error_frames"))
                 return
             
-            self.update_progress(80, f"读取到 {len(packets)} 个数据包，正在计算...")
+            self.update_progress(80, self.get_text("packets_read", count=len(packets)))
             
             window_size = float(self.window_var.get())
             
@@ -1125,14 +1264,14 @@ class BitrateAnalyzer:
             self.time_index = [d[0] for d in self.bitrate_data]
             self.prepare_thumbnail_data()
             
-            self.update_progress(100, f"✓ 完成 - {len(self.bitrate_data)} 个采样点")
+            self.update_progress(100, self.get_text("done", count=len(self.bitrate_data)))
             
             self.root.after(0, self.draw_chart)
             self.root.after(0, self.draw_thumbnail)
             self.root.after(0, lambda: self.update_video_info(duration, video_info))
             
         except Exception as e:
-            self.update_progress(0, f"错误: {str(e)}")
+            self.update_progress(0, f"{self.get_text('error')}: {str(e)}")
             import traceback
             traceback.print_exc()
         finally:
@@ -1144,7 +1283,6 @@ class BitrateAnalyzer:
             self.root.after(0, lambda: self.window_combo.config(state='readonly'))
     
     def prepare_thumbnail_data(self):
-        """准备缩略图数据 - 使用峰值保留采样"""
         max_thumb_points = 400
         
         if len(self.bitrate_data) <= max_thumb_points:
@@ -1302,7 +1440,7 @@ class BitrateAnalyzer:
             bytes_read += len(chunk)
             progress = min(75, 8 + (bytes_read / estimated_size) * 67)
             kb_read = bytes_read / 1024
-            self.update_progress(progress, f"读取帧数据... {kb_read:.0f} KB")
+            self.update_progress(progress, f"{self.get_text('read_frames')} {kb_read:.0f} KB")
         
         process.wait()
         
@@ -1377,7 +1515,7 @@ class BitrateAnalyzer:
         actual_workers = min(len(chunks), num_workers)
         shared_mask = self.cpu_manager.get_shared_mask()
         
-        self.update_progress(82, f"使用 {actual_workers} 进程计算...")
+        self.update_progress(82, self.get_text("using_processes", count=actual_workers))
         
         results = []
         try:
@@ -1393,9 +1531,9 @@ class BitrateAnalyzer:
                 for i, future in enumerate(futures):
                     results.extend(future.result())
                     progress = 82 + (i + 1) / len(futures) * 15
-                    self.update_progress(progress, f"计算中... {i+1}/{len(futures)}")
+                    self.update_progress(progress, self.get_text("calculating", current=i+1, total=len(futures)))
         except Exception as e:
-            print(f"并行计算错误: {e}")
+            print(f"Parallel error: {e}")
             return self._calculate_bitrate_single(frame_data, time_points, window_size)
         
         results.sort(key=lambda x: x[0])
@@ -1415,7 +1553,7 @@ class BitrateAnalyzer:
             
             if i % 100 == 0:
                 progress = 82 + (i / total) * 15
-                self.update_progress(progress, f"计算比特率... {i}/{total}")
+                self.update_progress(progress, self.get_text("calc_bitrate", current=i, total=total))
         
         return results
     
@@ -1470,7 +1608,7 @@ class BitrateAnalyzer:
         if not self.bitrate_data:
             self.canvas.create_text(
                 width / 2, height / 2,
-                text="请选择视频文件进行分析",
+                text=self.get_text("select_video_hint"),
                 font=self.fonts["title"], fill="#999"
             )
             return
@@ -1598,7 +1736,7 @@ class BitrateAnalyzer:
                 avg_label = f"{avg_bitrate/1000:.2f} Mbps" if avg_bitrate >= 1000 else f"{avg_bitrate:.0f} Kbps"
                 self.canvas.create_text(
                     chart_right - 5, avg_y - int(8 * scale),
-                    text=f"平均: {avg_label}", anchor="e", font=self.fonts["small"], fill="#e65100"
+                    text=f"{self.get_text('average')}: {avg_label}", anchor="e", font=self.fonts["normal"], fill="#e65100"
                 )
             
             max_br = max(visible_bitrates)
@@ -1607,28 +1745,27 @@ class BitrateAnalyzer:
             min_label = f"{min_br/1000:.2f} Mbps" if min_br >= 1000 else f"{min_br:.0f} Kbps"
             avg_label = f"{avg_bitrate/1000:.2f} Mbps" if avg_bitrate >= 1000 else f"{avg_bitrate:.0f} Kbps"
             
-            stats = f"最大: {max_label}  |  最小: {min_label}  |  平均: {avg_label}"
+            stats = f"{self.get_text('max')}: {max_label}  |  {self.get_text('min')}: {min_label}  |  {self.get_text('average')}: {avg_label}"
             
             self.canvas.create_text(
                 chart_left + 5, chart_top - int(25 * scale),
-                text="视频比特率分析", anchor="w", font=self.fonts["chart_title"], fill="#333"
+                text=self.get_text("bitrate_analysis"), anchor="w", font=self.fonts["chart_title"], fill="#333"
             )
             self.canvas.create_text(
                 chart_right, chart_top - int(25 * scale),
-                text=stats, anchor="e", font=self.fonts["small"], fill="#666"
+                text=stats, anchor="e", font=self.fonts["normal"], fill="#666"
             )
         
         self.canvas.create_text(
             chart_left + chart_w / 2, height - int(10 * scale),
-            text="时间", font=self.fonts["normal"], fill="#666"
+            text=self.get_text("time"), font=self.fonts["normal"], fill="#666"
         )
         self.canvas.create_text(
             int(15 * scale), chart_top + chart_h / 2,
-            text="比特率", font=self.fonts["normal"], fill="#666", angle=90
+            text=self.get_text("bitrate"), font=self.fonts["normal"], fill="#666", angle=90
         )
     
     def draw_thumbnail(self):
-        """绘制缩略图（仅绘制曲线部分）"""
         self.thumbnail_canvas.delete("all")
         self.selection_items = {}
         
@@ -1689,7 +1826,6 @@ class BitrateAnalyzer:
         self._create_selection_items()
     
     def _create_selection_items(self):
-        """创建选择框元素（首次）"""
         if not self.thumbnail_info:
             return
         
@@ -1729,7 +1865,6 @@ class BitrateAnalyzer:
         }
     
     def _update_selection_coords(self):
-        """只更新选择框坐标（不重绘）- 用于拖动时"""
         if not self.thumbnail_info or not self.selection_items:
             return
         
@@ -1787,7 +1922,7 @@ class BitrateAnalyzer:
     def update_zoom_label(self):
         view_range = self.view_end - self.view_start
         percentage = view_range * 100
-        self.zoom_label.config(text=f"显示: {percentage:.1f}%")
+        self.zoom_label.config(text=f"{self.get_text('display')} {percentage:.1f}%")
     
     def on_mouse_wheel(self, event):
         if not self.bitrate_data or not self.chart_info:
@@ -1880,7 +2015,6 @@ class BitrateAnalyzer:
         self.thumbnail_drag_start_view = (self.view_start, self.view_end)
     
     def on_thumbnail_drag(self, event):
-        """拖动时只更新选择框，不重绘主图表"""
         if not self.thumbnail_dragging or not self.thumbnail_info:
             return
         
@@ -1926,7 +2060,6 @@ class BitrateAnalyzer:
         self.pending_chart_draw = self.root.after(100, self.draw_chart)
     
     def on_thumbnail_release(self, event):
-        """松开时才绑制最终的主图表"""
         if not self.thumbnail_dragging:
             return
         
@@ -1985,7 +2118,7 @@ class BitrateAnalyzer:
         
         if not (chart_left <= x <= chart_right and chart_top <= y <= chart_bottom):
             self.cursor_info_label.config(text="")
-            self.hide_preview()  # 鼠标离开图表区域时隐藏预览
+            self.hide_preview()
             return
         
         min_dist = float('inf')
@@ -2028,7 +2161,6 @@ class BitrateAnalyzer:
         time_str = self.format_time_with_frames(t)
         self.cursor_info_label.config(text=f"⏱ {time_str}  |  📊 {br_str}")
         
-        # 请求视频预览
         if self.show_preview:
             self.request_preview(t, x, y)
     
@@ -2042,12 +2174,13 @@ class BitrateAnalyzer:
         self.crosshair_items = []
         self.cursor_info_label.config(text="")
         
-        # 隐藏预览窗口
         self.hide_preview()
     
     def update_video_info(self, duration, video_info):
         if not video_info:
             return
+        
+        self.last_video_info = video_info
         
         codec = video_info.get("codec", "N/A")
         width = video_info.get("width", 0)
@@ -2056,9 +2189,11 @@ class BitrateAnalyzer:
         size_mb = video_info.get("size", 0) / 1024 / 1024
         
         info_parts = [
-            f"编码: {codec}", f"分辨率: {width}×{height}",
-            f"帧率: {fps} fps", f"时长: {self.format_time_short(duration)}",
-            f"大小: {size_mb:.1f} MB",
+            f"{self.get_text('codec')}: {codec}",
+            f"{self.get_text('resolution')}: {width}×{height}",
+            f"{self.get_text('fps')}: {fps} fps",
+            f"{self.get_text('duration')}: {self.format_time_short(duration)}",
+            f"{self.get_text('size')}: {size_mb:.1f} MB",
         ]
         self.video_info_label.config(text="  |  ".join(info_parts))
     
