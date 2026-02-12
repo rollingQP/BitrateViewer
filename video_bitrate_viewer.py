@@ -20,6 +20,7 @@ import math
 import time as time_module
 import bisect
 import ctypes
+import tempfile
 
 
 # ============ 全局变量（用于多进程） ============
@@ -448,6 +449,17 @@ class BitrateAnalyzer:
         self.pending_chart_draw = None
         self.pending_thumbnail_draw = None
         
+        # 视频预览相关
+        self.show_preview = False
+        self.preview_window = None
+        self.preview_label = None
+        self.preview_image = None
+        self.preview_time_label = None
+        self.last_preview_time = -999
+        self.preview_cache = {}
+        self.preview_size = (320, 180)  # 16:9 预览大小
+        self.preview_pending = None
+        
         self.setup_fonts()
         self.setup_ui()
         self.find_ffmpeg()
@@ -600,6 +612,14 @@ class BitrateAnalyzer:
         ttk.Button(zoom_frame, text="➕ 放大", command=lambda: self.zoom(1.5), width=8).pack(side=tk.LEFT, padx=(10, 0))
         ttk.Button(zoom_frame, text="➖ 缩小", command=lambda: self.zoom(0.67), width=8).pack(side=tk.LEFT, padx=(5, 0))
         
+        # 视频预览开关
+        self.preview_var = tk.BooleanVar(value=False)
+        self.preview_check = ttk.Checkbutton(
+            zoom_frame, text="🖼 悬停显示截图",
+            variable=self.preview_var, command=self.on_preview_toggle
+        )
+        self.preview_check.pack(side=tk.LEFT, padx=(20, 0))
+        
         self.zoom_label = ttk.Label(zoom_frame, text="显示: 100.0%", font=self.fonts["small"])
         self.zoom_label.pack(side=tk.RIGHT)
         
@@ -724,6 +744,206 @@ class BitrateAnalyzer:
     def update_cpu_status(self, text):
         if self.cpu_status_label:
             self.root.after(0, lambda: self.cpu_status_label.config(text=text))
+    
+    # ============ 视频预览相关方法 ============
+    
+    def on_preview_toggle(self):
+        """切换视频预览功能"""
+        self.show_preview = self.preview_var.get()
+        if not self.show_preview:
+            self.hide_preview()
+    
+    def create_preview_window(self):
+        """创建预览窗口"""
+        if self.preview_window is None:
+            self.preview_window = tk.Toplevel(self.root)
+            self.preview_window.title("")
+            self.preview_window.overrideredirect(True)  # 无边框
+            self.preview_window.attributes('-topmost', True)
+            self.preview_window.withdraw()
+            
+            # 添加边框效果
+            outer_frame = tk.Frame(self.preview_window, bg="#1976D2", padx=2, pady=2)
+            outer_frame.pack(fill=tk.BOTH, expand=True)
+            
+            inner_frame = tk.Frame(outer_frame, bg="#f5f5f5")
+            inner_frame.pack(fill=tk.BOTH, expand=True)
+            
+            self.preview_label = tk.Label(inner_frame, bg="#000000")
+            self.preview_label.pack(padx=2, pady=(2, 0))
+            
+            self.preview_time_label = tk.Label(
+                inner_frame, text="", font=self.fonts["small"],
+                bg="#f5f5f5", fg="#333"
+            )
+            self.preview_time_label.pack(pady=(2, 4))
+        
+        return self.preview_window
+    
+    def hide_preview(self):
+        """隐藏预览窗口"""
+        if self.preview_window:
+            self.preview_window.withdraw()
+        if self.preview_pending:
+            self.root.after_cancel(self.preview_pending)
+            self.preview_pending = None
+    
+    def request_preview(self, time_sec, mouse_x, mouse_y):
+        """请求显示预览截图"""
+        if not self.show_preview or not self.video_path or not self.ffmpeg_path:
+            return
+        
+        # 四舍五入到 0.5 秒精度，减少请求
+        rounded_time = round(time_sec * 2) / 2
+        
+        # 如果时间点没变化，只更新位置
+        if abs(rounded_time - self.last_preview_time) < 0.3:
+            self._update_preview_position(mouse_x, mouse_y)
+            return
+        
+        self.last_preview_time = rounded_time
+        
+        # 取消之前的请求
+        if self.preview_pending:
+            self.root.after_cancel(self.preview_pending)
+        
+        # 延迟执行，避免快速移动时频繁请求
+        self.preview_pending = self.root.after(
+            100,
+            lambda: self._fetch_preview_async(rounded_time, mouse_x, mouse_y)
+        )
+    
+    def _fetch_preview_async(self, time_sec, mouse_x, mouse_y):
+        """异步获取预览截图"""
+        # 检查缓存
+        if time_sec in self.preview_cache:
+            self._show_preview(self.preview_cache[time_sec], time_sec, mouse_x, mouse_y)
+            return
+        
+        # 异步获取
+        thread = threading.Thread(
+            target=self._fetch_preview_thread,
+            args=(time_sec, mouse_x, mouse_y),
+            daemon=True
+        )
+        thread.start()
+    
+    def _fetch_preview_thread(self, time_sec, mouse_x, mouse_y):
+        """在后台线程中获取预览截图"""
+        tmp_path = None
+        try:
+            # 创建临时文件
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                tmp_path = tmp.name
+            
+            # 使用 ffmpeg 截取帧
+            cmd = [
+                self.ffmpeg_path,
+                '-ss', str(time_sec),
+                '-i', self.video_path,
+                '-vframes', '1',
+                '-vf', f'scale={self.preview_size[0]}:{self.preview_size[1]}:force_original_aspect_ratio=decrease,pad={self.preview_size[0]}:{self.preview_size[1]}:(ow-iw)/2:(oh-ih)/2:black',
+                '-y',
+                tmp_path
+            ]
+            
+            kwargs = {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE}
+            if platform.system() == "Windows":
+                kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            
+            result = subprocess.run(cmd, **kwargs, timeout=5)
+            
+            if result.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
+                # 在主线程中加载图像
+                self.root.after(0, lambda: self._load_and_show_preview(tmp_path, time_sec, mouse_x, mouse_y))
+            else:
+                # 清理临时文件
+                if tmp_path and os.path.exists(tmp_path):
+                    try:
+                        os.unlink(tmp_path)
+                    except:
+                        pass
+                    
+        except Exception as e:
+            print(f"[预览] 截图错误: {e}")
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except:
+                    pass
+    
+    def _load_and_show_preview(self, tmp_path, time_sec, mouse_x, mouse_y):
+        """加载并显示预览图"""
+        try:
+            image = tk.PhotoImage(file=tmp_path)
+            self.preview_cache[time_sec] = image
+            self._show_preview(image, time_sec, mouse_x, mouse_y)
+        except Exception as e:
+            print(f"[预览] 加载图片错误: {e}")
+        finally:
+            try:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+            except:
+                pass
+    
+    def _show_preview(self, image, time_sec, mouse_x, mouse_y):
+        """显示预览窗口"""
+        if not self.show_preview:
+            return
+        
+        self.create_preview_window()
+        self.preview_image = image  # 保持引用防止垃圾回收
+        self.preview_label.config(image=image)
+        self.preview_time_label.config(text=self.format_time_with_frames(time_sec))
+        
+        self._update_preview_position(mouse_x, mouse_y)
+        self.preview_window.deiconify()
+    
+    def _update_preview_position(self, mouse_x, mouse_y):
+        """更新预览窗口位置"""
+        if not self.preview_window or not self.preview_window.winfo_viewable():
+            if self.preview_window and self.preview_image:
+                self.preview_window.deiconify()
+            else:
+                return
+        
+        # 获取画布的屏幕坐标
+        canvas_x = self.canvas.winfo_rootx()
+        canvas_y = self.canvas.winfo_rooty()
+        
+        # 预览窗口大小（加上边框和标签）
+        preview_w = self.preview_size[0] + 10
+        preview_h = self.preview_size[1] + 35
+        
+        # 默认显示在鼠标右上方
+        x = canvas_x + mouse_x + 20
+        y = canvas_y + mouse_y - preview_h - 10
+        
+        # 获取屏幕尺寸
+        screen_w = self.root.winfo_screenwidth()
+        screen_h = self.root.winfo_screenheight()
+        
+        # 确保不超出屏幕右边界
+        if x + preview_w > screen_w:
+            x = canvas_x + mouse_x - preview_w - 20
+        
+        # 确保不超出屏幕上边界
+        if y < 0:
+            y = canvas_y + mouse_y + 20
+        
+        # 确保不超出屏幕下边界
+        if y + preview_h > screen_h:
+            y = screen_h - preview_h - 10
+        
+        self.preview_window.geometry(f"+{x}+{y}")
+    
+    def clear_preview_cache(self):
+        """清除预览缓存"""
+        self.preview_cache = {}
+        self.last_preview_time = -999
+    
+    # ============ FFmpeg 相关 ============
     
     def find_ffmpeg(self):
         system = platform.system()
@@ -850,6 +1070,10 @@ class BitrateAnalyzer:
         self.cursor_info_label.config(text="")
         self.update_zoom_label()
         
+        # 清除预览缓存
+        self.clear_preview_cache()
+        self.hide_preview()
+        
         if self.cpu_manager.supported and self.use_e_cores_when_minimized:
             if self.is_minimized:
                 self.cpu_manager.set_e_cores_only()
@@ -926,7 +1150,6 @@ class BitrateAnalyzer:
         if len(self.bitrate_data) <= max_thumb_points:
             self.thumbnail_data = self.bitrate_data[:]
         else:
-            # 使用与主图表相同的峰值保留采样方法
             step = len(self.bitrate_data) / max_thumb_points
             self.thumbnail_data = [self.bitrate_data[0]]
             
@@ -935,12 +1158,10 @@ class BitrateAnalyzer:
                 bucket_end = int((i + 1) * step)
                 bucket = self.bitrate_data[bucket_start:bucket_end]
                 if bucket:
-                    # 保留每个区间的最大值，确保峰值不会丢失
                     max_point = max(bucket, key=lambda x: x[1])
                     self.thumbnail_data.append(max_point)
             
             self.thumbnail_data.append(self.bitrate_data[-1])
-            # 按时间排序
             self.thumbnail_data.sort(key=lambda x: x[0])
     
     def get_visible_data(self, view_start_time, view_end_time, max_points=1500):
@@ -1764,6 +1985,7 @@ class BitrateAnalyzer:
         
         if not (chart_left <= x <= chart_right and chart_top <= y <= chart_bottom):
             self.cursor_info_label.config(text="")
+            self.hide_preview()  # 鼠标离开图表区域时隐藏预览
             return
         
         min_dist = float('inf')
@@ -1778,6 +2000,7 @@ class BitrateAnalyzer:
         
         if closest_point is None:
             self.cursor_info_label.config(text="")
+            self.hide_preview()
             return
         
         point_x, point_y, t, br = closest_point
@@ -1804,6 +2027,10 @@ class BitrateAnalyzer:
         br_str = f"{br/1000:.2f} Mbps" if br >= 1000 else f"{br:.0f} Kbps"
         time_str = self.format_time_with_frames(t)
         self.cursor_info_label.config(text=f"⏱ {time_str}  |  📊 {br_str}")
+        
+        # 请求视频预览
+        if self.show_preview:
+            self.request_preview(t, x, y)
     
     def on_mouse_leave(self, event):
         if self.pending_mouse_update:
@@ -1814,6 +2041,9 @@ class BitrateAnalyzer:
             self.canvas.delete(item)
         self.crosshair_items = []
         self.cursor_info_label.config(text="")
+        
+        # 隐藏预览窗口
+        self.hide_preview()
     
     def update_video_info(self, duration, video_info):
         if not video_info:
