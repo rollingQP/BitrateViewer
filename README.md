@@ -2,4 +2,4 @@
 A python program for viewing video bit rate.
 
 ## Usage
-Put ffprob in your system PATH or in ```./lib``` folder.
+Add ```ffprob``` in your system PATH or put it in ```./lib``` folder.
