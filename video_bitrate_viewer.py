@@ -1092,21 +1092,33 @@ class BitrateAnalyzer:
         ffmpeg_name = "ffmpeg.exe" if system == "Windows" else "ffmpeg"
         ffprobe_name = "ffprobe.exe" if system == "Windows" else "ffprobe"
         
+        # 可能的搜索路径
+        search_dirs = []
+        
         if getattr(sys, 'frozen', False):
-            script_dir = os.path.dirname(sys.executable)
+            # PyInstaller 打包后
+            if hasattr(sys, '_MEIPASS'):
+                search_dirs.append(os.path.join(sys._MEIPASS, 'lib'))
+            exe_dir = os.path.dirname(sys.executable)
+            search_dirs.append(os.path.join(exe_dir, 'lib'))
+            search_dirs.append(os.path.join(exe_dir, '_internal', 'lib'))
         else:
+            # 开发模式
             script_dir = os.path.dirname(os.path.abspath(__file__))
+            search_dirs.append(os.path.join(script_dir, 'lib'))
         
-        lib_dir = os.path.join(script_dir, "lib")
-        lib_ffmpeg = os.path.join(lib_dir, ffmpeg_name)
-        lib_ffprobe = os.path.join(lib_dir, ffprobe_name)
+        # 搜索 ffmpeg/ffprobe
+        for lib_dir in search_dirs:
+            lib_ffmpeg = os.path.join(lib_dir, ffmpeg_name)
+            lib_ffprobe = os.path.join(lib_dir, ffprobe_name)
+            
+            if os.path.isfile(lib_ffmpeg) and os.path.isfile(lib_ffprobe):
+                self.ffmpeg_path = lib_ffmpeg
+                self.ffprobe_path = lib_ffprobe
+                self.ffmpeg_label.config(text=self.get_text("ffmpeg_found", path=lib_ffprobe), foreground="#2e7d32")
+                return True
         
-        if os.path.isfile(lib_ffmpeg) and os.path.isfile(lib_ffprobe):
-            self.ffmpeg_path = lib_ffmpeg
-            self.ffprobe_path = lib_ffprobe
-            self.ffmpeg_label.config(text=self.get_text("ffmpeg_found", path=lib_ffprobe), foreground="#2e7d32")
-            return True
-        
+        # 尝试系统 PATH
         try:
             kwargs = self.get_subprocess_kwargs()
             where_cmd = ["where", ffprobe_name] if system == "Windows" else ["which", ffprobe_name]
